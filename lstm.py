@@ -46,9 +46,52 @@ class lstm_layer:
     def training_operation(self, x, s_prev, h_prev, y, learning_rate):
         h = self.forward_prop(x, s_prev, h_prev)[1]
         loss = tf.reduce_mean(tf.square(h - y))
-        optimizer = tf.train.GradientDescentOptimizer(0.5)
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate)
         return optimizer.minimize(loss), loss
 
+    # returns the session created
+    def run(self, x, s_prev, h_prev, y, learning_rate, num_epochs):
+        train, loss = self.training_operation(x, s_prev, h_prev, y, learning_rate)
+        init = tf.initialize_all_variables()
+        sess = tf.Session()
+        sess.run(init)
+        for step in range(num_epochs):
+            sess.run(train)
+            print(sess.run(loss))
+        return sess
+
+class LSTM:
+
+    # layer_sizes: size of each layer, starting with input layer
+    def __init__(self, *layer_sizes):
+        self.num_layers = len(layer_sizes)
+        self.layers = []
+        for i in range(len(layer_sizes)-1):
+            self.layers.append(lstm_layer(layer_sizes[i], layer_sizes[i+1]))
+
+    # returns a list of internal states and hidden outputs
+    def forward_prop_lists(self, x, s_prev_list, h_prev_list):
+        h_list = []
+        s_list = []
+        h = x
+        for layer, s_prev, h_prev in zip(self.layers, s_prev_list, h_prev_list):
+            s, h = layer.forward_prop(h, s_prev, h_prev)
+            s_list.append(s)
+            h_list.append(h)
+        return s_list, h_list
+
+    # returns the output of the last layer
+    def forward_prop(self, x, s_prev_list, h_prev_list):
+        return self.forward_prop_lists(x, s_prev_list, h_prev_list)[1][-1]
+
+    # returns the optimizer and the loss
+    def training_operation(self, x, s_prev_list, h_prev_list, y, learning_rate):
+        h = self.forward_prop(x, s_prev_list, h_prev_list)
+        loss = tf.reduce_mean(tf.square(h - y))
+        optimizer = tf.train.GradientDescentOptimizer(learning_rate)
+        return optimizer.minimize(loss), loss
+
+    # returns the session created
     def run(self, x, s_prev, h_prev, y, learning_rate, num_epochs):
         train, loss = self.training_operation(x, s_prev, h_prev, y, learning_rate)
         init = tf.initialize_all_variables()
@@ -96,5 +139,24 @@ def test_lstm_layer_chars():
     outp = str([vec_to_char(vec) for vec in h.eval(session=sess)])
     print(outp)
 
+def test_lstm_chars():
+    inp_str = "abcdef"
+    outp_str = "ghijkl"
+    x_data = tf.constant(np.array([char_to_vec(c) for c in inp_str]), dtype=tf.float32)
+    y_data = tf.constant(np.array([char_to_vec(c) for c in outp_str]), dtype=tf.float32)
+    num_examples = len(inp_str)
+    input_size = len(alphabet)
+    hidden_size = 10
+    output_size = input_size
+    s_prev = [tf.constant(np.zeros((num_examples, hidden_size)), dtype=tf.float32),
+        tf.constant(np.zeros((num_examples, output_size)), dtype=tf.float32)]
+    h_prev = [tf.constant(np.zeros((num_examples, hidden_size)), dtype=tf.float32),
+        tf.constant(np.zeros((num_examples, output_size)), dtype=tf.float32)]
+    lstm = LSTM(input_size, hidden_size, output_size)
+    sess = lstm.run(x_data, s_prev, h_prev, y_data, 1.0, 5000)
+    h = lstm.forward_prop(x_data, s_prev, h_prev)
+    outp = str([vec_to_char(vec) for vec in h.eval(session=sess)])
+    print(outp)
+
 if __name__ == "__main__":
-    test_lstm_layer_chars()
+    test_lstm_chars()
